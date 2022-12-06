@@ -9,35 +9,332 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-``` {r 1}
+# I. Introduction
+Music is a constantly growing and changing field with new artists and songs popping up daily. As more and more people have begun using different applications such as Apple Music, Spotify, etc., more and more data has become available to determine the individual characteristics that make up a song. When breaking down a song by its musical attributes, we can determine whether these attributes are correlated. 
+
+# II. Goal
+To be specific, the goal of this project is to build a regression model to define the relationship between song attributes and a song’s popularity. If our client were a record label, for example, this information would be vital when trying to produce music that will become popular and therefore sell more and generate more revenue for the record label.
+
+# III. Data Description
+
+The data gathered came from the Spotify API. 12,000 songs were scraped from Spotify spanning the years 2010-2022. These songs contain specific song attributes such as danceability, energy, key, loudness, and more, all of which are quantitative variables. They also contain a variable for popularity, which we will be attempting to predict through our model.
+
+# IV. Executive
+
+The attributes provided by the Spotify API are not good predictors of a Song's popularity when fitting a multiple linear regression model.
+
+The reason for this disconnect is that the regression assumptions are violated and can't be fixed by data transformations. This results in a model with an adjusted $R^2$ close to 0 which means that the points don't lie on a straight line making prediction difficult.
+
+In our analysis we analyzed ways to improve our model such as data transformations, correlation, and influential points which proved ineffective.
+
+# V. Regression Analysis
+
+## Inital Model
+
+``` {r setting up, include = FALSE}
 #install.packages("broom")
 #install.packages("GGally")
 library(tidyverse)
 library(broom)
 library(GGally)
+library()
 input = read.csv("finalData.csv",header=TRUE)
 input <- na.omit(input)
 input$Duration_s <- input$Duration_ms/1000
-glimpse(input)
-model = lm(Popularity~. - Track_ID, data = input)
-summary(model)
+input = input[,-c(2,6)]
+model = lm(Popularity~., data = input)
+```
+
+The initial model includes the following predictors:
+
+ 1. Acousticness
+ 2. Danceability
+ 3. Energy
+ 4. Instrumentalness
+ 5. Key
+ 6. Liveness
+ 7. Mode
+ 8. Loudness
+ 9. Tempo
+ 10. Time_signature
+ 11. Speechiness
+ 12. Valence
+ 13. Duration_s
+ 
+The response variable in our model is Popularity.
+
+## Regression Assumptions:
+
+1. Independence Assumption
+
+Independence assumption was tested utilizing Durbin-Watson test:
+
+``` {r independence, include = FALSE}
+#We need to check for normality using adtest
+library(lmtest)
+#Check independence assumption
+```
+``` {r independece result, echo = FALSE}
+dwtest(model, alternative = "two.sided")
+```
+
+The independence assumption is met. 
+
+Reason: The p-value is significantly smaller than $\alpha$ = 0.05, therefore we fail to reject the null hypothesis meaning that there is no autocorrelation
+
+2. Normality Assumption
+3. Constant Variance Assumption
+4. mean of potential error terms is 0
+
+Assumptions 2-4 can be verified utilizing plots:
+
+``` {r models, include = FALSE}
+library(nortest)
+
+# Original Model
+model = lm(Popularity~., data = input)
+ad.test(resid(model))
+
+# Square Root Model
+model_1 = lm(sqrt(Popularity) ~., data = input)
+ad.test(resid(model_1))
+
+# Quartic Root Model
+model_2 = lm(Popularity^(0.25) ~., data = input)
+ad.test(resid(model_2))
+
+# Natural log Model
+model_3 = lm(log(Popularity) ~., data = input)
+ad.test(resid(model_3))
+
+# 1/y Model
+model_4 = lm((1/Popularity) ~., data = input)
+ad.test(resid(model_4))
+
+# y^2 Model
+model_5 = lm(Popularity^2 ~., data = input)
+ad.test(resid(model_5))
+
+# y^2 Model
+model_5 = lm(Popularity^2 ~., data = input)
+ad.test(resid(model_5))
+```
+
+``` {r original plot, echo=FALSE}
+# Original Model
+# Normal Probability Plots
+par(mfrow = c(2,2) , mai = c(0.8,0.7, 0.2, 0.8))
+qqnorm(resid(model), main = "Normal Probability Plot of Residuals")
+qqline(resid(model), col = "red", lwd=2)
+
+# Residual Plots of e vs fitted values
+fit = fitted(model)
+
+# e vs Fitted Values
+plot(fit, resid(model), main = "e vs Fitted Values")
+abline(0, 0, col="red", lwd=3)
+```
+
+2. Normality assumption is not met.
+Reason: Residual points don't follow a straight line in the normal probability plot (can also be         verified using AD-Test)
+3. Constant variance assumption is not met.
+Reason: variance increases as x increases
+4. Mean of potential error terms is 0 assumption is met (see variance plot)
+
+## Correlation Analyis
+``` {r correlation, include = FALSE}
+library('corrplot')
+#correlation = cor(input[,-1])
+correlation = cor(input)
+```
+
+
+
+``` {r function, include = FALSE}
+  data = input
+  sig=0.5
+  #convert data to numeric in order to run correlations
+  #convert to factor first to keep the integrity of the data - each value will become a number rather than turn into NA
+  df_cor <- data %>% mutate_if(is.character, as.factor)
+  df_cor <- df_cor %>% mutate_if(is.factor, as.numeric)
+  #run a correlation and drop the insignificant ones
+  corr <- cor(df_cor)
+  #prepare to drop duplicates and correlations of 1     
+  corr[lower.tri(corr,diag=TRUE)] <- NA 
+  #drop perfect correlations
+  corr[corr == 1] <- NA 
+  #turn into a 3-column table
+  corr <- as.data.frame(as.table(corr))
+  #remove the NA values from above 
+  corr <- na.omit(corr) 
+  #select significant values  
+  corr <- subset(corr, abs(Freq) > sig) 
+  #sort by highest correlation
+  corr <- corr[order(-abs(corr$Freq)),] 
+  #turn corr back into matrix in order to plot with corrplot
+  mtx_corr <- reshape2::acast(corr, Var1~Var2, value.var="Freq")
+  
+  #plot correlations visually
+  corrplot(mtx_corr, is.corr=FALSE, tl.col="black", na.label=" ", method = "number")
+```
+
+``` {r correlation show, echo = FALSE}
+corrplot(correlation,method = "number", type = "upper", number.cex = 0.4)
+corrplot(mtx_corr, is.corr=FALSE, tl.col="black", na.label=" ", method = "number")
+```
+
+``` {r vif, include = FALSE}
+#Any VIF > 10?
+library(car)
+```
+
+``` {r vif show, echo = FALSE}
+vif(model)
+#Mean >> 1?
+meanVIF = mean(vif(model))
+```
+
+We can see that the variables with highest correlation are acousticness, energy instrumentalness, and loudness. However this is not too concerning since their Variance Inflation Factors are lower than 10 and therefore not severe.
+
+The mean of the Variance Inflation Factors is not much bigger than 1 (1.54) meaning that correlation is not severe.
+
+## Outlier Analysis
+``` {r outlier, include = FALSE}
+#Outlier with respect to x
+attach(input)
+k = 13
+n = length(Popularity)
+LV_cutoff = 2*(k+1)/n
+Hat_i = hatvalues(model)
+x_outlier = Hat_i[Hat_i>LV_cutoff]
+
+#Some evidence outlier with respect to y
+#studentized residual
+library(MASS)
+StudResid = stdres(model)
+some_evidence_y_outliers = StudResid[abs(StudResid)>2]
+
+#Strong evidence y outlier
+#Studentized deleted residual
+SDR = rstudent(model)
+print(n)
+print(k)
+t0.005 = qt(0.995, n-k-2)
+strong_evidence_y_outliers = SDR[abs(SDR)>t0.005]
+length(x_outlier)/n
+length(some_evidence_y_outliers)/n
+length(strong_evidence_y_outliers)/n
+```
+
+Using leverage values we find that around 7% of observations are outliers with respect to x
+
+Using studentized residuals we find some evidence that around 4% of observations are outliers with respect to y.
+
+Using deleted studentized residuals we find strong evidence that around 1% of observations are outliers with respect to x.
+
+## Influential Point Analysis
+
+``` {r influential, include = FALSE}
+CooksD = cooks.distance(model)
+F0.5 = qf(0.5, k+1, n-k-1)
+F0.8 = qf(0.2, k+1, n-k-1)
+#Influential
+influential = CooksD[CooksD>F0.5]
+inbetween = CooksD[CooksD<F0.5 & CooksD>F0.8]
+noninfluential = CooksD[CooksD<F0.8]
 plot(model)
 ```
 
-``` {r 2}
-#Check constant variance assumption
-#plot(Popularity, resid(model), main = "Residual plot")
-#abline(0, 0, col = "red", lwd=3)
+Utilizing Cooks Distance analysis we conclude that there are no influential points.
 
-#Check Normality of Residuals - can also use AD test
-#qqnorm(resid(model), main = "Normal plot of residuals")
-#qqline(resid(model), col = "red", lwd=2)
-
-#Transformations/dummy vars if necessary
-#Check for outliers and influential points
-#Correlation analysis
-#Reduction of model
-#Check performance of model
-#create a prediction
+``` {r step, include = FALSE}
+fullLM <-lm(Popularity~.,data = input)
+minLM <- lm(Popularity~1., data = input)
+stepBackward = step(fullLM, direction = 'backward')
+stepForward = step(minLM,list(upper = fullLM),direction = 'forward')
 ```
+
+Both forward and backward stepwise model selection yield the same model:
+ 
+Popularity ~ Acousticness + Danceability + Energy + Liveness + Mode + Loudness + Tempo + Time_signature + Valence + Duration_s
+
+Key, speechiness, and instrumentalness are removed from the model.
+
+## Model Selection
+``` {r evaluate models, include = FALSE}
+library(leaps)
+model_all <-regsubsets(Popularity~., data=input ,nbest =1, nvmax=13)
+summary_all = summary(model_all)
+k = as.numeric(rownames(summary_all$which))
+n = model_all$nn
+s = round(sqrt(summary_all$rss/(n-(k+1))),digit = 2)
+Cp = round(summary_all$cp, digit = 1)
+Rsq = round(summary_all$rsq*100,digit = 1)
+ARsq = round(summary_all$adjr2*100,digit = 1)
+SSE = summary_all$rss
+SSTO = sum((Popularity-mean(Popularity))^2)
+aic = round(2*(k+1)+n*log(SSE/n),digits = 2)
+SSE = round(SSE,digits = 2)
+all_matrix = cbind(Rsq,ARsq,Cp,s,SSE,aic,summary_all$outmat)
+summary(model)
+all_matrix
+summary(model)
+reduced_model = lm(Popularity~. - Time_signature - Speechiness - Instrumentalness, data = input)
+summary(reduced_model)
+```
+ 
+The model mentioned above (10 independent variables) is the best model beacause it has the smallest AIC, the smallest Mallows'$C_p$, and it was the model selected by the stepwise model selection function. 
+
+``` {r evaluate show, echo=FALSE}
+summary(model)
+summary(reduced_model)
+```
+
+# VI. Conclusion
+
+The key takeaway from our analysis is that the attributes provided by the Spotify API are not useful when building a linear regression to predict the popularity of a song.
+
+The low $R^2$ means that the observations don't follow a straight line and therefore can't be predicted accurately using linear regression.
+
+The regression assumptions did not hold and even after attempting transformations of the data.
+
+Furthermore we can rule out influential points being the reason for inaccuracy since we did not find any when performing Cooks Distance Analysis.
+
+
+
+
+
+# Summary (Not included in final report)
+
+Regression Assumptions:
+$\\ 1$ independence assumption-> pass using dwtest
+$\\ 2$ Normality -> failed using adtest
+$\\ 3$ constant variance assumption -> some funneling (residual plot)
+$\\ 4$ potential error term values has a mean equal to 0 -> residual plot
+
+No transformation is great
+
+Correlation is not severe since VIF << 10 for all variables
+However we should not that mean of vifs is 1.5 which is greater than 1 but still relatively small
+
+6% of observations are outliers with respect to x
+There is strong evidence that 0.7% of observations are outliers with respect to y
+No observations are influential points since Cooks Distance is less than F0.8 for all observations
+
+Same model for forward and backward:
+Acousticness + Danceability + Energy + Liveness + Mode + Loudness + Tempo + Time_signature + Valence + Duration_s
+
+Not included:
+$\\$ key
+$\\$ speechiness
+$\\$ instrumentalness
+
+All three were not significant as seen in summary output however other variables
+that were not significant were included
+# Remaining
+Model selection -> 10 variables as seen by AIC & Mallows Cp
+
+Test how good the model is
+
+
 
